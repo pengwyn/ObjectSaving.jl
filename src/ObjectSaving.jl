@@ -3,6 +3,7 @@ module ObjectSaving
 
 export OBJECT_DICT,
     ShouldConvertToDict,
+    ConvertToDict,
     ParseFromDict,
     Empty
 
