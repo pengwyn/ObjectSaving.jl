@@ -40,15 +40,15 @@ end
 # * Conversion from Dict
 #----------------------------------------
 
-ParseFromDict(obj::Any, keep_on_error=false) = obj
+ParseFromDict(obj::Any, keep_on_error=false ; kwds...) = obj
 
-function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error=false)
-    thetype = Main.eval(Meta.parse(obj_dict.object_type_name))
+function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error=false ; eval_module=Main)
+    thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
     @assert thetype isa Type
 
     new_dict = Dict()
     for (key,val) in obj_dict.dict
-        new_dict[key] = ParseFromDict(val, keep_on_error)
+        new_dict[key] = ParseFromDict(val, keep_on_error ; eval_module=eval_module)
     end
 
     local obj
@@ -184,7 +184,7 @@ function ConvertToDict(dict::Dict)
     CONVERTED_DICT(new_dict)
 end
 
-function ParseFromDict(obj::CONVERTED_DICT, keep_on_error=false)
+function ParseFromDict(obj::CONVERTED_DICT, keep_on_error=false ; kwds...)
     map(collect(obj.dict)) do pair
         key,val = pair
         key => ParseFromDict(val, keep_on_error)
@@ -203,7 +203,7 @@ function ConvertToDict(tuple::Tuple)
     CONVERTED_TUPLE(new_tuple)
 end
 
-ParseFromDict(obj::CONVERTED_TUPLE, keep_on_error=false) = ParseFromDict.(obj.tuple, keep_on_error)
+ParseFromDict(obj::CONVERTED_TUPLE, keep_on_error=false ; kwds...) = ParseFromDict.(obj.tuple, keep_on_error)
 
 ################################################################################
 
@@ -217,6 +217,6 @@ function ConvertToDict(array::Array)
     CONVERTED_ARRAY(new_array)
 end
 
-ParseFromDict(obj::CONVERTED_ARRAY, keep_on_error=false) = ParseFromDict.(obj.array, keep_on_error)
+ParseFromDict(obj::CONVERTED_ARRAY, keep_on_error=false ; kwds...) = ParseFromDict.(obj.array, keep_on_error)
 
 end # module
