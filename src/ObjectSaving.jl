@@ -12,7 +12,8 @@ export OBJECT_DICT,
 #----------------------------------------
 
 mutable struct OBJECT_DICT# <: Associative{Symbol,Any}
-    object_type_name::String
+    object_type_name::Symbol
+    object_parameters::Tuple
     dict::Dict{Symbol,Any}
 end
 
@@ -22,7 +23,7 @@ function ConvertToDict(obj::Any, ignore_fields::Vector{Symbol}=Symbol[])
     # buf = IOBuffer()
     # Base.show_datatype(buf, typeof(obj))
     # type_str = String(take!(buf))
-    type_str = sprint(Base.show_datatype, typeof(obj))
+    # type_str = sprint(Base.show_datatype, typeof(obj))
 
     dict = Dict()
     for fname in setdiff(fieldnames(typeof(obj)), ignore_fields)
@@ -33,7 +34,11 @@ function ConvertToDict(obj::Any, ignore_fields::Vector{Symbol}=Symbol[])
         dict[fname] = val
     end
 
-    return OBJECT_DICT(type_str, dict)
+    T = typeof(obj)
+    type_name = nameof(T)
+    type_parameters = filter(x -> !(x isa TypeVar),
+                             tuple(Base.unwrap_unionall(T).parameters...))
+    return OBJECT_DICT(type_name, type_parameters, dict)
 end
 
 ##########################################
@@ -43,7 +48,8 @@ end
 ParseFromDict(obj::Any, keep_on_error=false ; kwds...) = obj
 
 function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error=false ; eval_module=Main)
-    thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
+    # thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
+    thetype = eval_module.eval(:($(obj_dict.object_type_name){$(obj_dict.object_parameters...)}))
     @assert thetype isa Type
 
     new_dict = Dict()
