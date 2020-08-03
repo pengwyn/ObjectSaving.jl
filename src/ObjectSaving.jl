@@ -49,7 +49,17 @@ ParseFromDict(obj::Any, keep_on_error=false ; kwds...) = obj
 
 function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error=false ; eval_module=Main)
     # thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
-    thetype = eval_module.eval(:($(obj_dict.object_type_name){$(obj_dict.object_parameters...)}))
+    thetype = try
+        thetype = getproperty(eval_module, obj_dict.object_type_name)
+        if(obj_dict.object_parameters != ())
+            thetype{obj_dict.object_parameters...}
+        else
+            thetype
+        end
+    catch exc
+        @error "Unable to generate type for object" obj_dict.object_type_name obj_dict.object_parameters
+        rethrow()
+    end
     @assert thetype isa Type
 
     new_dict = Dict()
