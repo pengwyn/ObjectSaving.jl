@@ -133,17 +133,27 @@ function CreateObjectFromDict_AllArgs(T::Type, dict::Dict)
         else
             ftype = FieldType(T,n)
 
-            if ftype == Any
-                push!(args, nothing)
-            elseif hasmethod(zero, Tuple{Type{ftype}})
-                push!(args, zero(ftype))
-            elseif hasmethod(Empty, Tuple{Type{ftype}})
-                push!(args, Empty(ftype))
-            elseif hasmethod(ftype, Tuple{})
-                push!(args, ftype())
-            else
-                @warn "No default func for $ftype. Trying 0."
-                push!(args, 0)
+            # Search for a defaults dictionary from my AutoParameters package
+            sym = Symbol(:AUTOPARM_, nameof(T), :_defaults)
+            @show T
+            if isdefined(parentmodule(T), sym)
+                defaults = getproperty(parentmodule(T), sym)
+                if fname ∈ keys(defaults)
+                    push!(args, defaults[fname]())
+                else
+                    if ftype == Any
+                        push!(args, nothing)
+                    elseif hasmethod(zero, Tuple{Type{ftype}})
+                        push!(args, zero(ftype))
+                    elseif hasmethod(Empty, Tuple{Type{ftype}})
+                        push!(args, Empty(ftype))
+                    elseif hasmethod(ftype, Tuple{})
+                        push!(args, ftype())
+                    else
+                        @warn "No default func for $fname of type $ftype. Trying 0."
+                        push!(args, 0)
+                    end
+                end
             end
         end
     end
@@ -153,10 +163,11 @@ function CreateObjectFromDict_AllArgs(T::Type, dict::Dict)
         obj = T(args...)
     catch exc
         if exc isa MethodError
-            T2 = T.name.wrapper
+            # T2 = T.name.wrapper
             # while T2 isa UnionAll
             #     T2 = T2.body
             # end
+            T2 = Base.unwrap_unionall(T).name.wrapper
 
             @warn "Wasn't able to instantiate a $T object, try a $T2."
 
