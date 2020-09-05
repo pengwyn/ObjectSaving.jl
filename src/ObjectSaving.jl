@@ -45,9 +45,12 @@ end
 # * Conversion from Dict
 #----------------------------------------
 
-ParseFromDict(obj::Any, keep_on_error=false ; kwds...) = obj
+# Default keep_on_error
+ParseFromDict(obj ; kwds...) = ParseFromDict(obj, false ; kwds...)
+# Fallback
+ParseFromDict(obj, keep_on_error ; kwds...) = obj
 
-function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error=false ; eval_module=Main)
+function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error ; eval_module=Main)
     # thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
     thetype = try
         thetype = getproperty(eval_module, obj_dict.object_type_name)
@@ -191,7 +194,7 @@ end
 struct FAKE_FUNC <: Function
     name::String
 end
-ShouldConvertToDict(::Function) = true
+ShouldConvertToDict(x::Function) = !(x isa FAKE_FUNC)
 ConvertToDict(func::Function) = FAKE_FUNC(string(func))
 
 ################################################################################
@@ -211,7 +214,7 @@ function ConvertToDict(dict::Dict)
     CONVERTED_DICT(new_dict)
 end
 
-function ParseFromDict(obj::CONVERTED_DICT, keep_on_error=false ; kwds...)
+function ParseFromDict(obj::CONVERTED_DICT, keep_on_error ; kwds...)
     map(collect(obj.dict)) do pair
         key,val = pair
         key => ParseFromDict(val, keep_on_error)
@@ -220,30 +223,13 @@ end
 
 ################################################################################
 
-struct CONVERTED_TUPLE
-    tuple::Tuple
+const ITER_types = Union{Tuple,Array}
+struct CONVERTED_ITER
+    itr::ITER_types
 end
-ShouldConvertToDict(tuple::Tuple) = any(ShouldConvertToDict.(tuple))
-function ConvertToDict(tuple::Tuple)
-    new_tuple = MaybeConvertToDict.(tuple)
+ShouldConvertToDict(itr::ITER_types) = any(ShouldConvertToDict, itr)
+ConvertToDict(itr::ITER_types) = CONVERTED_ITER(MaybeConvertToDict.(itr))
 
-    CONVERTED_TUPLE(new_tuple)
-end
-
-ParseFromDict(obj::CONVERTED_TUPLE, keep_on_error=false ; kwds...) = ParseFromDict.(obj.tuple, keep_on_error)
-
-################################################################################
-
-struct CONVERTED_ARRAY
-    array::Array
-end
-ShouldConvertToDict(array::Array) = any(ShouldConvertToDict.(array))
-function ConvertToDict(array::Array)
-    new_array = MaybeConvertToDict.(array)
-
-    CONVERTED_ARRAY(new_array)
-end
-
-ParseFromDict(obj::CONVERTED_ARRAY, keep_on_error=false ; kwds...) = ParseFromDict.(obj.array, keep_on_error)
+ParseFromDict(obj::CONVERTED_ITER, keep_on_error ; kwds...) = ParseFromDict.(obj.itr, keep_on_error)
 
 end # module
