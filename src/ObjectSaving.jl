@@ -11,9 +11,13 @@ export OBJECT_DICT,
 # * Conversion to Dict
 #----------------------------------------
 
+mutable struct TYPE_INFO
+    type_name::Symbol
+    type_params::Tuple
+end
+
 mutable struct OBJECT_DICT# <: Associative{Symbol,Any}
-    object_type_name::Symbol
-    object_parameters::Tuple
+    object_type
     dict::Dict{Symbol,Any}
 end
 
@@ -34,16 +38,37 @@ function ConvertToDict(obj::Any, ignore_fields::Vector{Symbol}=Symbol[])
         dict[fname] = val
     end
 
-    T = typeof(obj)
+    object_type = MaybeConvertToDict(typeof(obj))
+    return OBJECT_DICT(object_type, dict)
+end
+
+function ConvertToDict(T::Type)
     type_name = nameof(T)
     type_parameters = filter(x -> !(x isa TypeVar),
                              tuple(Base.unwrap_unionall(T).parameters...))
-    return OBJECT_DICT(type_name, type_parameters, dict)
+    type_parameters = MaybeConvertToDict.(type_parameters)
+    return TYPE_INFO(type_name, type_parameters)
 end
 
 ##########################################
 # * Conversion from Dict
 #----------------------------------------
+
+ParseFromTypeInfo(T::Type ; kwds...) = T
+function ParseFromTypeInfo(type_info::TYPE_INFO ; eval_module=Main)
+    try
+        thetype = getproperty(eval_module, type_info.type_name)
+        if(type_info.type_parameters != ())
+            params = ParseFromTypeInfo.(type_info.type_parameters)
+            thetype{params...}
+        else
+            thetype
+        end
+    catch exc
+        @error "Unable to generate type for object" type_info.type_name type_info.type_parameters
+        rethrow()
+    end
+end
 
 # Default keep_on_error
 ParseFromDict(obj ; kwds...) = ParseFromDict(obj, false ; kwds...)
@@ -52,17 +77,7 @@ ParseFromDict(obj, keep_on_error ; kwds...) = obj
 
 function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error ; eval_module=Main)
     # thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
-    thetype = try
-        thetype = getproperty(eval_module, obj_dict.object_type_name)
-        if(obj_dict.object_parameters != ())
-            thetype{obj_dict.object_parameters...}
-        else
-            thetype
-        end
-    catch exc
-        @error "Unable to generate type for object" obj_dict.object_type_name obj_dict.object_parameters
-        rethrow()
-    end
+    thetype = ParseFromTypeInfo(obj_dict.type_info)
     @assert thetype isa Type
 
     new_dict = Dict()
@@ -231,5 +246,16 @@ ShouldConvertToDict(itr::ITER_types) = any(ShouldConvertToDict, itr)
 ConvertToDict(itr::ITER_types) = CONVERTED_ITER(MaybeConvertToDict.(itr))
 
 ParseFromDict(obj::CONVERTED_ITER, keep_on_error ; kwds...) = ParseFromDict.(obj.itr, keep_on_error)
+
+
+###############################################################################
+
+struct CONVERTED_TUPLE_TYPE
+    parameters
+end
+ShouldConvertToDict(T::Type{<:Tuple}) = any(ShouldConvertToDict, T.parameters)
+ConvertToDict(T::Type{<:Tuple}) = CONVERTED_TUPLE_TYPE(MaybeConvertToDict.(T.parameters))
+
+ParseFromTypeInfo(type_info::CONVERTED_TUPLE_TYPE ; eval_module=Main) = Tuple{ParseFromTypeInfo.(type_info.parameters)...}
 
 end # module
