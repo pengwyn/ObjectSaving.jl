@@ -44,10 +44,10 @@ end
 
 function ConvertToDict(T::Type)
     type_name = nameof(T)
-    type_parameters = filter(x -> !(x isa TypeVar),
+    type_params = filter(x -> !(x isa TypeVar),
                              tuple(Base.unwrap_unionall(T).parameters...))
-    type_parameters = MaybeConvertToDict.(type_parameters)
-    return TYPE_INFO(type_name, type_parameters)
+    type_params = MaybeConvertToDict.(type_params)
+    return TYPE_INFO(type_name, type_params)
 end
 
 ##########################################
@@ -55,17 +55,19 @@ end
 #----------------------------------------
 
 ParseFromTypeInfo(T::Type ; kwds...) = T
+ParseFromTypeInfo(sym::Symbol ; kwds...) = sym
+ParseFromTypeInfo(N::Integer ; kwds...) = N
 function ParseFromTypeInfo(type_info::TYPE_INFO ; eval_module=Main)
     try
         thetype = getproperty(eval_module, type_info.type_name)
-        if(type_info.type_parameters != ())
-            params = ParseFromTypeInfo.(type_info.type_parameters)
+        if(type_info.type_params != ())
+            params = ParseFromTypeInfo.(type_info.type_params ; eval_module)
             thetype{params...}
         else
             thetype
         end
     catch exc
-        @error "Unable to generate type for object" type_info.type_name type_info.type_parameters
+        @error "Unable to generate type for object" type_info.type_name type_info.type_params eval_module
         rethrow()
     end
 end
@@ -76,13 +78,12 @@ ParseFromDict(obj ; kwds...) = ParseFromDict(obj, false ; kwds...)
 ParseFromDict(obj, keep_on_error ; kwds...) = obj
 
 function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error ; eval_module=Main)
-    # thetype = eval_module.eval(Meta.parse(obj_dict.object_type_name))
-    thetype = ParseFromTypeInfo(obj_dict.type_info)
+    thetype = ParseFromTypeInfo(obj_dict.object_type ; eval_module)
     @assert thetype isa Type
 
     new_dict = Dict()
     for (key,val) in obj_dict.dict
-        new_dict[key] = ParseFromDict(val, keep_on_error ; eval_module=eval_module)
+        new_dict[key] = ParseFromDict(val, keep_on_error ; eval_module)
     end
 
     local obj
@@ -91,16 +92,11 @@ function ParseFromDict(obj_dict::OBJECT_DICT, keep_on_error ; eval_module=Main)
     catch exc
         exc isa InterruptException && rethrow()
 
-        try
-            obj = CreateObjectFromDict(thetype, new_dict)
-        catch exc
-
-            if keep_on_error
-                @warn "Got an error with exception: $exc"
-                obj = obj_dict
-            else
-                rethrow()
-            end
+        if keep_on_error
+            @warn "Got an error with exception: $exc"
+            obj = obj_dict
+        else
+            rethrow()
         end
     end
         
@@ -245,7 +241,7 @@ end
 ShouldConvertToDict(itr::ITER_types) = any(ShouldConvertToDict, itr)
 ConvertToDict(itr::ITER_types) = CONVERTED_ITER(MaybeConvertToDict.(itr))
 
-ParseFromDict(obj::CONVERTED_ITER, keep_on_error ; kwds...) = ParseFromDict.(obj.itr, keep_on_error)
+ParseFromDict(obj::CONVERTED_ITER, keep_on_error ; kwds...) = ParseFromDict.(obj.itr, keep_on_error ; kwds...)
 
 
 ###############################################################################
@@ -256,6 +252,6 @@ end
 ShouldConvertToDict(T::Type{<:Tuple}) = any(ShouldConvertToDict, T.parameters)
 ConvertToDict(T::Type{<:Tuple}) = CONVERTED_TUPLE_TYPE(MaybeConvertToDict.(T.parameters))
 
-ParseFromTypeInfo(type_info::CONVERTED_TUPLE_TYPE ; eval_module=Main) = Tuple{ParseFromTypeInfo.(type_info.parameters)...}
+ParseFromTypeInfo(type_info::CONVERTED_TUPLE_TYPE ; eval_module=Main) = Tuple{ParseFromTypeInfo.(type_info.parameters ; eval_module)...}
 
 end # module
